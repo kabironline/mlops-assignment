@@ -62,13 +62,13 @@ jobs:
     - name: Deploy to GKE
       run: |
         echo "Deploying image ${{ env.IMAGE_TAG }} to GKE cluster ${{ env.GKE_CLUSTER }}"
-        
-        # Use kubectl to set the image for the deployment.
-        # This command updates the 'iris-predictor-api' deployment to use the new Docker image.
-        # The --record flag annotates the revision with the command, which is useful for rollbacks.
-        kubectl set image deployment/${{ env.APP_NAME }} ${{ env.APP_NAME }}=${{ env.IMAGE_TAG }} --record
-        
+
+        # Use sed to replace the placeholder image with the new image tag in the deployment manifest
+        sed -i "s|image:.*|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml
+
+        # Apply the updated manifest to the cluster. This handles both creation and updates.
+        kubectl apply -f k8s/deployment.yaml
+
         # Wait for the deployment rollout to complete
         kubectl rollout status deployment/${{ env.APP_NAME }}
-        
         echo "Deployment successful!"
