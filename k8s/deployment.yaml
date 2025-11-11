@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: iris-predictor-api
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: iris-predictor-api
@@ -16,8 +16,30 @@ spec:
       - name: iris-predictor-api
         # This is a placeholder that will be replaced by the CI/CD pipeline
         image: gcr.io/google-samples/hello-app:1.0
+        resources:
+          requests:
+            cpu: "500m"
         ports:
         - containerPort: 8000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: iris-predictor-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: iris-predictor-api
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
 ---
 apiVersion: v1
 kind: Service
