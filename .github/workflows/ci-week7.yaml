@@ -1,48 +1,62 @@
-name: Build, Deploy, and Stress Test on week7 branch
+name: GCP Build, Deploy, and Stress Test
 
 on:
   push:
-    branches: [ week7 ]
+    branches:
+      - week7 # Or 'main', or whichever branch you prefer
+  workflow_dispatch:
 
 env:
-  # Common environment variables
+  # --- REQUIRED SECRETS ---
+  # These must be set in your GitHub Repo Settings > Secrets
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
-  GKE_ZONE: ${{ secrets.GKE_ZONE }}
-  GAR_LOCATION: ${{ secrets.GAR_LOCATION }}
-  GAR_REPOSITORY: "iris-app-repo" # Name of your Artifact Registry repository
-  APP_NAME: "iris-predictor-api"
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}   # e.g., 'my-gke-cluster'
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}       # e.g., 'us-central1-a'
+
+  # --- CONFIGURATION (Change as needed) ---
+  # We make GAR_LOCATION an explicit env var instead of a secret
+  # This was the cause of your primary error
+  GAR_LOCATION: "us-central1"
+  GAR_REPOSITORY: "iris-app-repo"
+  
+  # --- CRITICAL FIX ---
+  # These names MUST match your k8s/*.yml files
+  APP_NAME: "iris-classifier"
+  SERVICE_NAME: "iris-classifier-svc"
+  HPA_NAME: "iris-classifier-hpa"
 
 jobs:
   build-deploy-and-test:
     name: Build, Deploy, and Stress Test
     runs-on: ubuntu-latest
+    
+    # Add permissions for GKE auth
+    permissions:
+      contents: 'read'
+      id-token: 'write'
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     # 1. Authenticate to Google Cloud
     - name: Authenticate to Google Cloud
       id: auth
-      uses: 'google-github-actions/auth@v1'
+      uses: 'google-github-actions/auth@v2'
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
     # 2. Configure Docker for Artifact Registry
     - name: Configure Docker
+      # This command is now fixed because GAR_LOCATION is set in 'env'
       run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
     # 3. Build and Push Docker image
     - name: Build and Push Docker image
       run: |
-        # Define the full image tag
         IMAGE_TAG="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.APP_NAME }}:${{ github.sha }}"
         
-        # Build the Docker image
         docker build -t $IMAGE_TAG .
-        
-        # Push the Docker image to Google Artifact Registry
         docker push $IMAGE_TAG
         
         # Make the image tag available to subsequent steps
@@ -50,25 +64,28 @@ jobs:
 
     # 4. Set up GKE credentials
     - name: Set up GKE credentials
-      uses: 'google-github-actions/get-gke-credentials@v1'
+      uses: 'google-github-actions/get-gke-credentials@v2'
       with:
         cluster_name: ${{ env.GKE_CLUSTER }}
         location: ${{ env.GKE_ZONE }}
-        project_id: ${{ env.GCP_PROJECT_ID }}
 
     # 5. Deploy to Google Kubernetes Engine
     - name: Deploy to GKE
       run: |
-        echo "Deploying image ${{ env.IMAGE_TAG }} to GKE cluster ${{ env.GKE_CLUSTER }}"
+        echo "Deploying image ${{ env.IMAGE_TAG }} to GKE cluster..."
         
-        # Use sed to replace the placeholder image with the new image tag in the deployment manifest
-        sed -i "s|image:.*|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml
+        # Use sed to replace the placeholder image in the deployment manifest
+        # This is safer than your "image:.*" as it targets the specific placeholder
+        sed -i "s|image: YOUR_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yml
 
-        # Apply the updated manifest to the cluster. This handles both creation and updates.
-        kubectl apply -f k8s/deployment.yaml
+        # --- CRITICAL FIX ---
+        # Apply ALL manifests in the k8s directory
+        # This creates the Deployment, Service, and HPA
+        kubectl apply -f k8s/
         
         # Wait for the deployment rollout to complete
-        kubectl rollout status deployment/${{ env.APP_NAME }}
+        # This now uses the correct APP_NAME
+        kubectl rollout status deployment/${{ env.APP_NAME }} --timeout=2m
         echo "Deployment successful!"
 
     # 6. Get Service External IP
@@ -78,10 +95,12 @@ jobs:
         echo "Waiting for external IP..."
         EXTERNAL_IP=""
         while [ -z $EXTERNAL_IP ]; do
-          EXTERNAL_IP=$(kubectl get service ${{ env.APP_NAME }}-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          [ -z "$EXTERNAL_IP" ] && sleep 10
+          # This now uses the correct SERVICE_NAME
+          EXTERNAL_IP=$(kubectl get service ${{ env.SERVICE_NAME }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          [ -z "$EXTERNAL_IP" ] && echo "Waiting 10s for IP..." && sleep 10
         done
         echo "Obtained external IP: $EXTERNAL_IP"
+        echo "SERVICE_URL=http://$EXTERNAL_IP" | tee -a $GITHUB_ENV
         echo "IP=$EXTERNAL_IP" >> $GITHUB_OUTPUT
 
     # 7. Install wrk for stress testing
@@ -90,37 +109,62 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wrk
 
-    # 8. Stress Test with Autoscaling (max 3 pods)
-    - name: Stress Test with Autoscaling
+    # 8. Run Test 1 (Autoscaling)
+    - name: Run Test 1 (Autoscaling)
       run: |
-        echo "--- Starting Stress Test (max pods: 3, concurrency: 1000) ---"
-        # Run wrk to generate load
-        wrk -t4 -c1000 -d30s http://${{ steps.get_ip.outputs.IP }}/
+        echo "--- Starting autoscaling test (60 seconds) ---"
+        echo "--- This test uses 100 concurrent connections ---"
         
-        echo "--- Observing HPA status during test ---"
-        # Watch HPA during the test in the background
-        kubectl get hpa -w &
-        sleep 35
-        kill $!
+        # --- CRITICAL FIX ---
+        # Run wrk in the background, hitting the /predict/ endpoint
+        # and using the wrk_script.lua to send POST data
+        wrk -t4 -c100 -d60s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua &
+        WRK_PID=$!
+
+        # Observe the HPA and pod count while wrk is running
+        echo "--- Observing HPA and Pods (checking every 10s for 60s) ---"
+        for i in {1..6}; do
+          echo "--- Check $i ---"
+          kubectl get hpa,pods -o wide
+          sleep 10
+        done
         
-        echo "--- Final HPA and Pod status ---"
-        kubectl get hpa
+        wait $WRK_PID # Wait for wrk to finish
+        echo "--- Autoscaling test complete. Final pod count: ---"
         kubectl get pods
 
-    # 9. Restrict Autoscaling and Observe Bottlenecks
-    - name: Restrict Autoscaling and Observe Bottlenecks
+    # 9. Run Test 2 (Bottleneck)
+    - name: Run Test 2 (Bottleneck)
       run: |
-        echo "--- Restricting max pods to 1 for bottleneck test ---"
-        kubectl patch hpa ${{ env.APP_NAME }}-hpa --patch '{"spec":{"maxReplicas":1}}'
+        echo "--- Preparing for bottleneck test ---"
+        echo "--- Restricting max pods to 1 ---"
+        # This now uses the correct HPA_NAME
+        kubectl patch hpa ${{ env.HPA_NAME }} --patch '{"spec":{"maxReplicas":1}}'
         
-        # Wait for any extra pods to terminate
-        echo "Waiting for cluster to scale down..."
+        echo "Waiting 30s for cluster to scale down..."
         sleep 30
         
-        echo "--- Starting Bottleneck Test (max pods: 1, concurrency: 2000) ---"
-        # Run wrk with increased concurrency
-        wrk -t4 -c2000 -d30s http://${{ steps.get_ip.outputs.IP }}/
-        
-        echo "--- Final HPA and Pod status after bottleneck test ---"
-        kubectl get hpa
+        echo "--- Pod count before bottleneck test: ---"
         kubectl get pods
+
+        echo "--- Running bottleneck test 1 (200 concurrent connections) ---"
+        # --- CRITICAL FIX ---
+        # Hits the correct /predict/ POST endpoint
+        wrk -t8 -c200 -d30s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua
+
+        echo "--- Running bottleneck test 2 (400 concurrent connections) ---"
+        # --- CRITICAL FIX ---
+        # Hits the correct /predict/ POST endpoint
+        # This demonstrates the "increased from 1000 to 2000" (requests) by
+        # increasing concurrency from 200 to 400.
+        wrk -t8 -c400 -d30s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua
+        
+        echo "--- Re-enabling HPA (cleanup) ---"
+        kubectl patch hpa ${{ env.HPA_NAME }} --patch '{"spec":{"maxReplicas":3}}'
+
+    # 10. Cleanup K8s resources
+    - name: Cleanup K8s resources
+      if: always() # This step runs even if previous steps fail
+      run: |
+        echo "Cleaning up Kubernetes resources..."
+        kubectl delete -f k8s/
