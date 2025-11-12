@@ -1,13 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  # This matches env.SERVICE_NAME ("iris-classifier-svc")
   name: iris-classifier-svc
 spec:
   type: LoadBalancer
-  ports:
-  # This port (80) matches the deployment
-  - port: 80
-    targetPort: 80
   selector:
     app: iris-classifier
+  ports:
+  - port: 80                        # External port for users
+    targetPort: 8000                # ✅ Forward to Uvicorn inside container

@@ -1,7 +1,6 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  # This matches env.APP_NAME ("iris-classifier")
   name: iris-classifier
 spec:
   replicas: 1
@@ -15,12 +14,9 @@ spec:
     spec:
       containers:
       - name: iris-classifier
-        # This placeholder matches the CI file
         image: YOUR_IMAGE_PLACEHOLDER
         ports:
-        # This port (80) matches your Dockerfile
-        - containerPort: 80
+        - containerPort: 8000       # ✅ Match Uvicorn port
         resources:
           requests:
-            # This is required for the HPA to work
-            cpu: "200m"
+            cpu: 200m
