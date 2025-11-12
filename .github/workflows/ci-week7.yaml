@@ -21,9 +21,9 @@ env:
   
   # --- CRITICAL FIX ---
   # These names MUST match your k8s/*.yml files
-  APP_NAME: "iris-predictor-api"
-  SERVICE_NAME: "iris-predictor-api-service"
-  HPA_NAME: "iris-predictor-api-hpa"
+  APP_NAME: "iris-classifier"
+  SERVICE_NAME: "iris-classifier-svc"
+  HPA_NAME: "iris-classifier-hpa"
 
 jobs:
   build-deploy-and-test:
