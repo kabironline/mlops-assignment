@@ -76,7 +76,7 @@ jobs:
         
         # Use sed to replace the placeholder image in the deployment manifest
         # This is safer than your "image:.*" as it targets the specific placeholder
-        sed -i "s|image: YOUR_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yml
+        sed -i "s|image: YOUR_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml
 
         # --- CRITICAL FIX ---
         # Apply ALL manifests in the k8s directory
