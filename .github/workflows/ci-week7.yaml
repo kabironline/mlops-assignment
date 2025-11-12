@@ -76,7 +76,7 @@ jobs:
         
         # Use sed to replace the placeholder image in the deployment manifest
         # This is safer than your "image:.*" as it targets the specific placeholder
-        sed -i "s|image: YOUR_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml
+        sed -i "s|image: YOUR_IMAGE_PLACEHOLDER|image: ${{ env.IMAGE_TAG }}|g" k8s/deployment.yml
 
         # --- CRITICAL FIX ---
         # Apply ALL manifests in the k8s directory
@@ -147,17 +147,17 @@ jobs:
         echo "--- Pod count before bottleneck test: ---"
         kubectl get pods
 
-        echo "--- Running bottleneck test 1 (200 concurrent connections) ---"
+        echo "--- Running bottleneck test 1 (1000 concurrent connections) ---"
         # --- CRITICAL FIX ---
         # Hits the correct /predict/ POST endpoint
-        wrk -t8 -c200 -d30s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua
+        # Updated to use 1000 concurrent connections as per assignment
+        wrk -t8 -c1000 -d30s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua
 
-        echo "--- Running bottleneck test 2 (400 concurrent connections) ---"
+        echo "--- Running bottleneck test 2 (2000 concurrent connections) ---"
         # --- CRITICAL FIX ---
         # Hits the correct /predict/ POST endpoint
-        # This demonstrates the "increased from 1000 to 2000" (requests) by
-        # increasing concurrency from 200 to 400.
-        wrk -t8 -c400 -d30s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua
+        # Updated to use 2000 concurrent connections as per assignment
+        wrk -t8 -c2000 -d30s "${{ env.SERVICE_URL }}/predict/" -s ./wrk_script.lua
         
         echo "--- Re-enabling HPA (cleanup) ---"
         kubectl patch hpa ${{ env.HPA_NAME }} --patch '{"spec":{"maxReplicas":3}}'
