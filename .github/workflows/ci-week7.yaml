@@ -9,9 +9,9 @@ on:
 env:
   # --- REQUIRED SECRETS ---
   # These must be set in your GitHub Repo Settings > Secrets
-  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}   # e.g., 'my-gke-cluster'
-  GKE_ZONE: ${{ secrets.GKE_ZONE }}       # e.g., 'us-central1-a'
+  GCP_PROJECT_ID: "mystical-atlas-473806-i7"
+  GKE_CLUSTER: "kabir-iris-cluster"   # e.g., 'my-gke-cluster'
+  GKE_ZONE: "us-central1"       # e.g., 'us-central1-a'
 
   # --- CONFIGURATION (Change as needed) ---
   # We make GAR_LOCATION an explicit env var instead of a secret
