@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-classifier-svc
+spec:
+  type: LoadBalancer
+  selector:
+    app: iris-classifier
+  ports:
+  - port: 80                        # External port for users
+    targetPort: 8000                # ✅ Forward to Uvicorn inside container
