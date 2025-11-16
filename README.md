@@ -1,4 +1,4 @@
-week7/
+week8/
 ├──poisoned_data_experiment.sh - A bash script that runs the poisoning experiments at different levels and settings
 ├──main.py - Entry point for the FastAPI Iris prediction service
 ├──Dockerfile - Docker configuration for containerizing the FastAPI service
