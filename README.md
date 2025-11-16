@@ -1,4 +1,5 @@
 week7/
+├──poisoned_data_experiment.sh - A bash script that runs the poisoning experiments at different levels and settings
 ├──main.py - Entry point for the FastAPI Iris prediction service
 ├──Dockerfile - Docker configuration for containerizing the FastAPI service
 ├──k8s
@@ -20,6 +21,7 @@ week7/
 │   ├── evaluate.py - script for model evaluation
 │   ├── __init__.py
 │   └── train.py - script for model training
+│   └── train_poisoned_data.py - script for training poisoning data and training model
 ├── wrk_script.lua - wrk example load script
 └── tests
     ├── __init__.py
